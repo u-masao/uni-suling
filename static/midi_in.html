@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIDI IN Viewer</title>
+    <!-- Tailwind CSSを読み込み -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- WebMidi.jsライブラリを読み込み -->
+    <script src="https://cdn.jsdelivr.net/npm/webmidi@latest/dist/iife/webmidi.iife.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .meter-bar {
+            transition: width 0.05s linear, background-color 0.1s linear;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-2xl bg-slate-800 rounded-2xl shadow-lg p-8 space-y-6">
+        <div class="text-center">
+            <h1 class="text-3xl font-bold text-blue-400">MIDI IN Viewer</h1>
+            <p id="status" class="text-sm text-slate-400 mt-2">MIDIデバイスを待機中...</p>
+        </div>
+
+        <!-- メーター表示エリア -->
+        <div class="space-y-4">
+            <!-- ヴェロシティメーター -->
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-2">Note On Velocity (<span id="velocity-value" class="font-mono">0</span>)</label>
+                <div class="w-full bg-slate-700 rounded-lg h-8 relative overflow-hidden">
+                    <div id="velocity-bar" class="meter-bar h-full bg-green-600" style="width: 0%;"></div>
+                </div>
+            </div>
+            <!-- チャンネルアフタータッチメーター -->
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-2">Channel Aftertouch (<span id="aftertouch-value" class="font-mono">0</span>)</label>
+                <div class="w-full bg-slate-700 rounded-lg h-8 relative overflow-hidden">
+                    <div id="aftertouch-bar" class="meter-bar h-full bg-blue-600" style="width: 0%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ログ表示エリア -->
+        <div>
+            <label class="block text-sm font-medium text-slate-300 mb-2">受信ログ</label>
+            <div id="log" class="h-64 bg-slate-900 rounded-lg p-4 overflow-y-auto font-mono text-sm text-slate-300">
+                ここに受信したMIDIメッセージが表示されます。
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM要素の取得
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+        const velocityBar = document.getElementById('velocity-bar');
+        const velocityValue = document.getElementById('velocity-value');
+        const aftertouchBar = document.getElementById('aftertouch-bar');
+        const aftertouchValue = document.getElementById('aftertouch-value');
+
+        // ログメッセージを追記する関数
+        function logMessage(message) {
+            const now = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `<span class="text-slate-500">${now}:</span> ${message}`;
+            logDiv.prepend(logEntry); // 新しいログを上に追加
+        }
+        
+        // MIDIメッセージを解釈してUIを更新する関数
+        function handleMidiMessage(event) {
+            const command = event.data[0] >> 4;
+            const channel = event.data[0] & 0xf;
+            const note = event.data[1];
+            const value = event.data.length > 2 ? event.data[2] : 0;
+
+            // --- Note On ---
+            if (command === 9 && value > 0) {
+                const percentage = (value / 127) * 100;
+                velocityBar.style.width = `${percentage}%`;
+                velocityValue.textContent = value;
+
+                if (value > 110) velocityBar.style.backgroundColor = '#ef4444'; // red-500
+                else if (value > 80) velocityBar.style.backgroundColor = '#f59e0b'; // amber-500
+                else velocityBar.style.backgroundColor = '#22c55e'; // green-500
+                
+                logMessage(`Note ON (Ch ${channel + 1}): Note# ${note}, Velocity: ${value}`);
+            } 
+            // --- Note Off ---
+            else if (command === 8 || (command === 9 && value === 0)) {
+                velocityBar.style.width = '0%';
+                velocityValue.textContent = '0';
+                logMessage(`Note OFF (Ch ${channel + 1}): Note# ${note}`);
+            } 
+            // --- Channel Aftertouch ---
+            else if (command === 13) {
+                const pressure = event.data[1]; // 2バイト目が圧力値
+                const percentage = (pressure / 127) * 100;
+                aftertouchBar.style.width = `${percentage}%`;
+                aftertouchValue.textContent = pressure;
+                logMessage(`Channel Aftertouch (Ch ${channel + 1}): Pressure: ${pressure}`);
+            }
+        }
+
+        async function initializeMidi() {
+            try {
+                await WebMidi.enable();
+                logMessage("WebMidi APIが有効になりました。");
+
+                if (WebMidi.inputs.length < 1) {
+                    statusDiv.textContent = "MIDI入力デバイスが見つかりません。";
+                    statusDiv.classList.add('text-red-400');
+                    return;
+                }
+
+                const deviceNames = WebMidi.inputs.map(d => d.name).join(', ');
+                statusDiv.textContent = `リスニング中: ${deviceNames}`;
+                statusDiv.classList.add('text-green-400');
+
+                // すべての入力デバイスにリスナーを設定
+                WebMidi.inputs.forEach(inputDevice => {
+                    logMessage(`リスナーを設定: ${inputDevice.name}`);
+                    // ★ 修正: ライブラリの作法に則った生のメッセージリスナーを使用
+                    inputDevice.addListener("midimessage", handleMidiMessage);
+                });
+
+            } catch (err) {
+                statusDiv.textContent = "WebMidi APIを有効化できませんでした。";
+                statusDiv.classList.add('text-red-400');
+                logMessage(`エラー: ${err}`);
+            }
+        }
+
+        initializeMidi();
+    </script>
+</body>
+</html>
+

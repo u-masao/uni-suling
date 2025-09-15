@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIDI OUT Sender</title>
+    <!-- Tailwind CSSを読み込み -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* スライダーの見た目をカスタマイズ */
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #3b82f6; /* blue-500 */
+            cursor: pointer;
+            border-radius: 50%;
+            margin-top: -6px; /* 上下の位置調整 */
+        }
+        input[type=range]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #3b82f6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-md bg-slate-800 rounded-2xl shadow-lg p-8 space-y-6">
+        <div class="text-center">
+            <h1 class="text-3xl font-bold text-blue-400">MIDI OUT Sender</h1>
+            <p id="status" class="text-sm text-slate-400 mt-2">MIDIデバイスを待機中...</p>
+        </div>
+
+        <!-- MIDI出力デバイス選択 -->
+        <div>
+            <label for="midi-outputs" class="block text-sm font-medium text-slate-300 mb-2">出力デバイス</label>
+            <select id="midi-outputs" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition">
+                <option>利用可能なデバイスがありません</option>
+            </select>
+        </div>
+
+        <!-- ノートとヴェロシティの設定 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label for="note" class="block text-sm font-medium text-slate-300 mb-2">ノート番号</label>
+                <input type="number" id="note" value="60" min="0" max="127" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition">
+                <p class="text-xs text-slate-500 mt-1">60 = C4</p>
+            </div>
+            <div>
+                <label for="velocity" class="block text-sm font-medium text-slate-300 mb-2">ヴェロシティ (<span id="velocity-value" class="font-mono">100</span>)</label>
+                <input type="range" id="velocity" value="100" min="0" max="127" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+            </div>
+        </div>
+
+        <!-- ★ 新機能: チャンネルアフタータッチ -->
+        <div class="pt-2">
+            <label for="aftertouch" class="block text-sm font-medium text-slate-300 mb-2">チャンネルアフタータッチ (<span id="aftertouch-value" class="font-mono">0</span>)</label>
+            <input type="range" id="aftertouch" value="0" min="0" max="127" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+        </div>
+
+        <!-- 操作ボタン -->
+        <div class="grid grid-cols-3 gap-3 pt-4">
+            <button id="note-on" class="px-4 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-500 active:bg-green-700 transition-all shadow-lg transform hover:scale-105">
+                ノートON
+            </button>
+            <button id="note-off" class="px-4 py-3 bg-red-600 text-white font-bold rounded-lg hover:bg-red-500 active:bg-red-700 transition-all shadow-lg transform hover:scale-105">
+                ノートOFF
+            </button>
+            <!-- ★ 新機能: アフタータッチ送信ボタン -->
+            <button id="send-aftertouch" class="px-4 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-500 active:bg-blue-700 transition-all shadow-lg transform hover:scale-105">
+                タッチ送信
+            </button>
+        </div>
+        
+        <!-- 送信ログ -->
+        <div class="pt-4">
+            <p class="text-xs text-slate-500 text-center" id="log-message">操作を行うとここにログが表示されます</p>
+        </div>
+    </div>
+
+    <script>
+        // グローバル変数
+        let midiOutput = null;
+        const midiChannel = 0; // チャンネル1 (0-15で指定)
+
+        // DOM要素の取得
+        const noteInput = document.getElementById('note');
+        const velocitySlider = document.getElementById('velocity');
+        const velocityValue = document.getElementById('velocity-value');
+        const noteOnButton = document.getElementById('note-on');
+        const noteOffButton = document.getElementById('note-off');
+        const outputsSelect = document.getElementById('midi-outputs');
+        const statusEl = document.getElementById('status');
+        const logEl = document.getElementById('log-message');
+        // ★ 新機能: アフタータッチ関連の要素
+        const aftertouchSlider = document.getElementById('aftertouch');
+        const aftertouchValue = document.getElementById('aftertouch-value');
+        const sendAftertouchButton = document.getElementById('send-aftertouch');
+
+
+        // Web MIDI APIへのアクセスを要求
+        if (navigator.requestMIDIAccess) {
+            navigator.requestMIDIAccess({ sysex: false })
+                .then(onMIDISuccess, onMIDIFailure);
+        } else {
+            statusEl.textContent = "お使いのブラウザはWeb MIDI APIをサポートしていません。";
+            statusEl.classList.replace('text-slate-400', 'text-red-400');
+        }
+
+        /**
+         * MIDIアクセス成功時のコールバック
+         */
+        function onMIDISuccess(midiAccess) {
+            statusEl.textContent = "Web MIDI APIの準備ができました。";
+            statusEl.classList.replace('text-slate-400', 'text-green-400');
+            
+            const outputs = midiAccess.outputs.values();
+            outputsSelect.innerHTML = '';
+            
+            let firstOutputId = null;
+            for (const output of outputs) {
+                if (!firstOutputId) firstOutputId = output.id;
+                const option = document.createElement('option');
+                option.value = output.id;
+                option.textContent = output.name;
+                outputsSelect.appendChild(option);
+            }
+            
+            if (firstOutputId) {
+                midiOutput = midiAccess.outputs.get(firstOutputId);
+                logEl.textContent = `出力先: ${midiOutput.name}`;
+            } else {
+                 outputsSelect.innerHTML = '<option>利用可能なデバイスがありません</option>';
+                 statusEl.textContent = "MIDI出力デバイスが見つかりません。";
+                 statusEl.classList.replace('text-green-400', 'text-yellow-400');
+            }
+
+            outputsSelect.addEventListener('change', (event) => {
+                midiOutput = midiAccess.outputs.get(event.target.value);
+                logEl.textContent = `出力先を ${midiOutput.name} に変更しました。`;
+            });
+        }
+
+        /**
+         * MIDIアクセス失敗時のコールバック
+         */
+        function onMIDIFailure(msg) {
+            statusEl.textContent = `MIDIデバイスへのアクセスに失敗しました: ${msg}`;
+            statusEl.classList.replace('text-slate-400', 'text-red-400');
+        }
+
+        /**
+         * MIDIメッセージを送信する関数
+         * @param {Array<number>} message - MIDIメッセージ
+         */
+        function sendMIDIMessage(message) {
+            if (midiOutput) {
+                midiOutput.send(message);
+                logEl.textContent = `送信: [${message.join(', ')}] @ ${new Date().toLocaleTimeString()}`;
+            } else {
+                logEl.textContent = 'エラー: MIDI出力デバイスが選択されていません。';
+            }
+        }
+        
+        // --- イベントリスナー設定 ---
+
+        velocitySlider.addEventListener('input', () => {
+            velocityValue.textContent = velocitySlider.value;
+        });
+
+        noteOnButton.addEventListener('click', () => {
+            const note = parseInt(noteInput.value);
+            const velocity = parseInt(velocitySlider.value);
+            // ステータスバイト: 0x90 | midiChannel
+            const message = [0x90 + midiChannel, note, velocity]; 
+            sendMIDIMessage(message);
+        });
+
+        noteOffButton.addEventListener('click', () => {
+            const note = parseInt(noteInput.value);
+            // ステータスバイト: 0x80 | midiChannel
+            const message = [0x80 + midiChannel, note, 0];
+            sendMIDIMessage(message);
+        });
+
+        // ★ 新機能: アフタータッチのスライダー
+        aftertouchSlider.addEventListener('input', () => {
+            aftertouchValue.textContent = aftertouchSlider.value;
+        });
+        
+        // ★ 新機能: アフタータッチ送信ボタン
+        sendAftertouchButton.addEventListener('click', () => {
+            const pressure = parseInt(aftertouchSlider.value);
+            // チャンネルアフタータッチのステータスバイト: 0xD0 | midiChannel
+            const message = [0xD0 + midiChannel, pressure];
+            sendMIDIMessage(message);
+        });
+    </script>
+</body>
+</html>
+
+
