@@ -25,19 +25,19 @@ const int NOTE_ON_VELOCITY = 127;
 // --- ブレスカーブ・閾値設定 ---
 const int NOTE_ON_THRESHOLD = 40;
 const int NOTE_OFF_THRESHOLD = 30;
-const float AFTERTOUCH_CURVE = 0.5;
-const int SENSOR_MAX_VALUE = 150;
+const float AFTERTOUCH_CURVE = 1.0;
+const int SENSOR_MAX_VALUE = 100;
 const int AFTERTOUCH_MIN = 0;
 const int AFTERTOUCH_MAX = 127;
 
 // --- 応答性・安定性向上のための設定 ---
-const unsigned long SEND_INTERVAL_US = 10000;
-unsigned long lastSendTime = 0;
+const unsigned long SEND_INTERVAL_US = 20000;
 const unsigned long RETRIGGER_DELAY_US = 5000;
 
 // --- 状態管理用グローバル変数 ---
 bool isNoteOn = false;
 int lastSentAftertouch = -1;
+unsigned long lastSendTime = 0;
 unsigned long lastNoteOffTime = 0;
 
 // BLEサーバーのコールバック
