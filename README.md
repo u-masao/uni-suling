@@ -114,8 +114,11 @@ const int MIDI_NOTE = 69;       // ノートナンバー (A4だよ！)
 const int NOTE_ON_VELOCITY = 127; // ベロシティは元気いっぱいに固定！
 
 // --- ブレスカーブ・閾値設定 ---
-const int NOTE_ON_THRESHOLD = 40;   // 息を認識し始める感度
-const int NOTE_OFF_THRESHOLD = 30;  // 息が止まったと判断する感度
-const float AFTERTOUCH_CURVE = 0.5; // 息の強さのカーブ (小さいほど弱い息に敏感に！)
-const int SENSOR_MAX_VALUE = 150;   // 息の最大パワーの目安
+const int NOTE_ON_THRESHOLD_OFFSET = 60;   // 息を認識し始める感度
+const int NOTE_OFF_THRESHOLD_OFFSET = 30;  // 息が止まったと判断する感度
+const int SENSOR_MAX_VALUE = 700;          // 息の最大パワーの目安
+const float AFTERTOUCH_CURVE = 1.0;   // 息の強さのカーブ (小さいほど弱い息に敏感に！)
+const int AFTERTOUCH_MIN = 0;
+const int AFTERTOUCH_MAX = 127;
 ```
+
