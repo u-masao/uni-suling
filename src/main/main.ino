@@ -23,10 +23,10 @@ const int MIDI_NOTE = 69;
 const int NOTE_ON_VELOCITY = 127;
 
 // --- ブレスカーブ・閾値設定 ---
-const int NOTE_ON_THRESHOLD = 40;
-const int NOTE_OFF_THRESHOLD = 30;
+const int NOTE_ON_THRESHOLD_OFFSET = 60;
+const int NOTE_OFF_THRESHOLD_OFFSET = 30;
+const int SENSOR_MAX_VALUE = 700;
 const float AFTERTOUCH_CURVE = 1.0;
-const int SENSOR_MAX_VALUE = 100;
 const int AFTERTOUCH_MIN = 0;
 const int AFTERTOUCH_MAX = 127;
 
@@ -35,6 +35,7 @@ const unsigned long SEND_INTERVAL_US = 20000;
 const unsigned long RETRIGGER_DELAY_US = 5000;
 
 // --- 状態管理用グローバル変数 ---
+int idleSensorValue = 400;
 bool isNoteOn = false;
 int lastSentAftertouch = -1;
 unsigned long lastSendTime = 0;
@@ -56,6 +57,7 @@ void setup() {
   digitalWrite(SENSOR_POWER_PIN, HIGH);
   ledcSetup(LED_CHANNEL, LED_FREQ, LED_RESOLUTION);
   ledcAttachPin(LED_PIN, LED_CHANNEL);
+  analogSetAttenuation(ADC_0db);
 
   BLEDevice::init(DEVICE_NAME);
   NimBLEServer* pServer = BLEDevice::createServer();
@@ -71,12 +73,19 @@ void setup() {
   BLEMidiServer.begin(DEVICE_NAME);
   pAdvertising->start();
   Serial.println("ESP32 Breath Controller is ready.");
+
+  idleSensorValue = 0;
+  for (int i = 0; i < 16; i++) {
+    idleSensorValue += analogRead(SENSOR_ANALOG_PIN);
+  }
+  idleSensorValue /= 16;
 }
 
 // アフタータッチ値を計算するヘルパー関数
 int calcAftertouch(int rawValue) {
-  float normalized = (float)constrain(rawValue, NOTE_ON_THRESHOLD, SENSOR_MAX_VALUE) - NOTE_ON_THRESHOLD;
-  normalized /= (float)(SENSOR_MAX_VALUE - NOTE_ON_THRESHOLD);
+  float normalized = (float)constrain(rawValue, idleSensorValue + NOTE_ON_THRESHOLD_OFFSET, SENSOR_MAX_VALUE)
+                     - idleSensorValue - NOTE_ON_THRESHOLD_OFFSET;
+  normalized /= (float)(SENSOR_MAX_VALUE - idleSensorValue - NOTE_ON_THRESHOLD_OFFSET);
   float curved = pow(normalized, AFTERTOUCH_CURVE);
   return constrain((int)(curved * 127), AFTERTOUCH_MIN, AFTERTOUCH_MAX);
 }
@@ -91,7 +100,7 @@ void loop() {
     int rawValue = total / 4;
 
     // Note ON ロジック
-    if (!isNoteOn && rawValue >= NOTE_ON_THRESHOLD && (micros() - lastNoteOffTime > RETRIGGER_DELAY_US)) {
+    if (!isNoteOn && rawValue >= idleSensorValue + NOTE_ON_THRESHOLD_OFFSET && (micros() - lastNoteOffTime > RETRIGGER_DELAY_US)) {
       isNoteOn = true;
       BLEMidiServer.noteOn(MIDI_CHANNEL, MIDI_NOTE, NOTE_ON_VELOCITY);
       int initialAftertouch = calcAftertouch(rawValue);
@@ -102,7 +111,7 @@ void loop() {
     }
 
     // Note OFF ロジック
-    else if (isNoteOn && rawValue <= NOTE_OFF_THRESHOLD) {
+    else if (isNoteOn && rawValue <= idleSensorValue + NOTE_OFF_THRESHOLD_OFFSET) {
       isNoteOn = false;
       BLEMidiServer.noteOff(MIDI_CHANNEL, MIDI_NOTE, 0);
       lastNoteOffTime = micros();
