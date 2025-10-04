@@ -41,6 +41,7 @@ ESP32と圧力センサーを下の図のように接続します。とっても
   * **センサー GND** → ESP32 **GND**
   * **センサー VOUT** → ESP32 **GPIO 36** (ADC1\_CH0)
   * **バイパスコンデンサ** → センサーのVDDピンとGNDピンの間に接続
+  * **外部 LED アノード** → ESP32 **GPIO 25**（直列に電流制御抵抗いれます 1kΩ ぐらいで）
 
 ### 組み立て
 
@@ -121,4 +122,5 @@ const float AFTERTOUCH_CURVE = 1.0;   // 息の強さのカーブ (小さいほ�
 const int AFTERTOUCH_MIN = 0;
 const int AFTERTOUCH_MAX = 127;
 ```
+
 
