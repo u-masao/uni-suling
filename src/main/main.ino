@@ -10,7 +10,8 @@ const char* DEVICE_NAME = "ESP32-Uni-Suling";
 // --- 物理ピン設定 ---
 const int SENSOR_ANALOG_PIN = 36;
 const int SENSOR_POWER_PIN = 13;
-const int LED_PIN = 2;
+const int LED_PIN_INNER = 2;
+const int LED_PIN_OUTER = 25;
 
 // --- LED PWM設定 ---
 const int LED_CHANNEL = 0;
@@ -56,7 +57,8 @@ void setup() {
   pinMode(SENSOR_POWER_PIN, OUTPUT);
   digitalWrite(SENSOR_POWER_PIN, HIGH);
   ledcSetup(LED_CHANNEL, LED_FREQ, LED_RESOLUTION);
-  ledcAttachPin(LED_PIN, LED_CHANNEL);
+  ledcAttachPin(LED_PIN_INNER, LED_CHANNEL);
+  ledcAttachPin(LED_PIN_OUTER, LED_CHANNEL);
   analogSetAttenuation(ADC_0db);
 
   BLEDevice::init(DEVICE_NAME);
@@ -136,6 +138,7 @@ void loop() {
     ledcWrite(LED_CHANNEL, constrain(brightness, 0, 255));
 
   } else {
-    digitalWrite(LED_PIN, (millis() / 500) % 2);
+    digitalWrite(LED_PIN_INNER, (millis() / 500) % 2);
+    digitalWrite(LED_PIN_OUTER, (millis() / 500) % 2);
   }
 }
